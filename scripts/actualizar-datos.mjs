@@ -30,9 +30,14 @@ async function fetchJSON(url, { sinVerificarTLS = false } = {}) {
 }
 
 // ---------- 1. Valor de UVA (BCRA) ----------
+// NOTA: el BCRA dio de baja la v3.0 de esta API el 28/2/2026. Usamos la
+// v4.0, que además cambió la forma de la respuesta: los datos de una
+// variable vienen anidados en `results[0].detalle`, no como lista plana.
+const BCRA_BASE = "https://api.bcra.gob.ar/estadisticas/v4.0";
+
 async function actualizarUVA() {
   console.log("Buscando el ID de la variable UVA en el catálogo del BCRA...");
-  const catalogo = await fetchJSON("https://api.bcra.gob.ar/estadisticas/v3.0/monetarias", { sinVerificarTLS: true });
+  const catalogo = await fetchJSON(`${BCRA_BASE}/monetarias`, { sinVerificarTLS: true });
   const variableUVA = (catalogo.results || []).find((v) =>
     (v.descripcion || "").toLowerCase().includes("valor adquisitivo")
   );
@@ -43,10 +48,11 @@ async function actualizarUVA() {
   const hoy = new Date();
   const hace10Dias = new Date(hoy.getTime() - 10 * 86400000);
   const fmt = (d) => d.toISOString().slice(0, 10);
-  const url = `https://api.bcra.gob.ar/estadisticas/v3.0/monetarias/${variableUVA.idVariable}?desde=${fmt(hace10Dias)}&hasta=${fmt(hoy)}`;
+  const url = `${BCRA_BASE}/monetarias/${variableUVA.idVariable}?desde=${fmt(hace10Dias)}&hasta=${fmt(hoy)}`;
   const datos = await fetchJSON(url, { sinVerificarTLS: true });
 
-  const filas = datos.results || [];
+  // v4.0: results = [ { idVariable, detalle: [ {fecha, valor}, ... ] } ]
+  const filas = datos.results?.[0]?.detalle || [];
   console.log(`Se obtuvieron ${filas.length} valores de UVA.`);
 
   const batch = db.batch();
