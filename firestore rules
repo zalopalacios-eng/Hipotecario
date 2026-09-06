@@ -1,0 +1,53 @@
+rules_version = '2';
+
+// IMPORTANTE — leé esto antes de publicar el sitio:
+// Como decidiste no poner login, estas reglas no pueden verificar "que seas
+// vos" (no hay ninguna noción de usuario). Lo único que hacen es:
+//   1) permitir lectura pública (la necesita el propio front para mostrarte
+//      los datos, ya que no hay backend intermedio),
+//   2) exigir que cualquier escritura tenga la forma esperada, para filtrar
+//      basura/errores obvios.
+// Esto NO evita que alguien que descubra la URL del sitio (y por lo tanto tu
+// configuración pública de Firebase) pueda escribir datos falsos si se lo
+// propone. Para un uso personal y de bajo perfil está bien, pero si en algún
+// momento querés algo más sólido, el siguiente paso natural es agregar
+// Firebase App Check (gratis) o Firebase Authentication anónima con reglas
+// atadas a un único UID fijo.
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    match /uva_diario/{fecha} {
+      allow read: if true;
+      // Solo la GitHub Action (que usa una cuenta de servicio con permisos de
+      // administrador y por lo tanto se salta estas reglas) debería escribir acá.
+      allow write: if false;
+    }
+
+    match /feriados/{anio} {
+      allow read: if true;
+      allow write: if false;
+    }
+
+    match /pagos/{numeroCuota} {
+      allow read: if true;
+      allow write: if request.resource.data.keys().hasAll(
+        ['numeroCuota', 'fechaVencimiento', 'fechaPago', 'valorUvaPago', 'uvaCuota', 'uvaCapital', 'uvaInteres', 'montoPesosPagado']
+      )
+      && request.resource.data.numeroCuota is int
+      && request.resource.data.montoPesosPagado is number
+      && request.resource.data.montoPesosPagado > 0;
+      allow delete: if true;
+    }
+
+    match /gastos/{gastoId} {
+      allow read: if true;
+      allow create: if request.resource.data.keys().hasAll(['rubro', 'monto', 'fecha'])
+        && request.resource.data.rubro in ['expensas', 'luz', 'gas', 'internet', 'seguro', 'otro']
+        && request.resource.data.monto is number
+        && request.resource.data.monto > 0;
+      allow update: if false;
+      allow delete: if true;
+    }
+  }
+}
