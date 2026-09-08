@@ -11,6 +11,12 @@ import { generarCuadroAmortizacion } from "./amortizacion.js";
 const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
 
+// Capital inicial en UVA, calculado con precisión completa (pesos ÷ valor
+// UVA), no el valor redondeado a 2 decimales que se guarda en
+// firebase-config.js solo a título informativo. Redondear acá introduce un
+// error mínimo que se agranda cuota a cuota a lo largo de las 360 cuotas.
+const capitalInicialUVA = datosCredito.montoOriginalPesos / datosCredito.valorUvaInicial;
+
 // ---------- Formateadores ----------
 const fmtPesos = new Intl.NumberFormat("es-AR", { style: "currency", currency: "ARS", maximumFractionDigits: 2 });
 const fmtUVA = (n) => new Intl.NumberFormat("es-AR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(n);
@@ -23,8 +29,8 @@ const hoyISO = () => new Date().toISOString().slice(0, 10);
 // ---------- Estado en memoria ----------
 let cuadro = [];
 let feriadosSet = new Set();
-let uvaPorFecha = new Map(); // "YYYY-MM-DD" -> valor
-let pagosPorCuota = new Map(); // numero -> {fechaPago, valorUvaPago, montoPesosPagado, ...}
+let uvaPorFecha = new Map();
+let pagosPorCuota = new Map();
 let gastos = [];
 
 // ---------- Carga de datos ----------
@@ -62,9 +68,6 @@ async function cargarGastos() {
   return lista;
 }
 
-// Busca el valor de UVA para una fecha exacta; si no está, devuelve el último
-// valor disponible anterior (o el más reciente que haya, si la fecha es futura),
-// marcando si es un valor "confirmado" (esa fecha exacta) o "estimado".
 function valorUvaParaFecha(fechaISO) {
   if (uvaPorFecha.has(fechaISO)) {
     return { valor: uvaPorFecha.get(fechaISO), confirmado: true };
@@ -78,20 +81,17 @@ function valorUvaParaFecha(fechaISO) {
   if (ultimaAnterior) {
     return { valor: uvaPorFecha.get(ultimaAnterior), confirmado: false, fechaUsada: ultimaAnterior };
   }
-  // No hay ningún dato todavía (recién arrancando la app antes de que corra la Action)
   return { valor: datosCredito.valorUvaInicial, confirmado: false, fechaUsada: datosCredito.fechaLiquidacion };
 }
 
 // ---------- Render: resumen / hero ----------
 function calcularSaldoActualUVA() {
-  // El saldo posterior a la última cuota efectivamente pagada (en orden), o el
-  // capital inicial si todavía no se pagó ninguna.
-  let saldo = datosCredito.capitalInicialUVA;
+  let saldo = capitalInicialUVA;
   for (const fila of cuadro) {
     if (pagosPorCuota.has(fila.numero)) {
       saldo = fila.uvaSaldoPosterior;
     } else {
-      break; // asumimos que se paga en orden
+      break;
     }
   }
   return saldo;
@@ -132,7 +132,7 @@ function renderResumen() {
 
   document.getElementById("datos-fijos").innerHTML = `
     <div><span>Capital original</span><strong>${fmtPesos.format(datosCredito.montoOriginalPesos)}</strong></div>
-    <div><span>Capital en UVAs</span><strong>${fmtUVA(datosCredito.capitalInicialUVA)}</strong></div>
+    <div><span>Capital en UVAs</span><strong>${fmtUVA(capitalInicialUVA)}</strong></div>
     <div><span>Fecha de liquidación</span><strong>${fmtFecha(datosCredito.fechaLiquidacion)}</strong></div>
     <div><span>TNA / TEM</span><strong>${(datosCredito.tna * 100).toFixed(2)}% / ${(datosCredito.tem * 100).toFixed(3)}%</strong></div>
     <div><span>Plazo</span><strong>${datosCredito.plazoMeses} meses</strong></div>
@@ -248,7 +248,7 @@ const RUBROS = ["expensas", "luz", "gas", "internet", "seguro", "otro"];
 function renderGastos() {
   const porPeriodo = new Map();
   for (const g of gastos) {
-    const periodo = g.fecha.slice(0, 7); // "YYYY-MM"
+    const periodo = g.fecha.slice(0, 7);
     if (!porPeriodo.has(periodo)) porPeriodo.set(periodo, []);
     porPeriodo.get(periodo).push(g);
   }
@@ -331,10 +331,12 @@ async function iniciar() {
       cargarGastos(),
     ]);
 
-        // datosCredito.fechaLiquidacion viene como texto ("2026-02-27") desde
-    // firebase-config.js; el motor de amortización necesita un objeto Date.
+    // El capital en UVA se calcula siempre a partir de pesos ÷ valor UVA con
+    // precisión completa (sin redondear a 2 decimales), porque redondear acá
+    // introduce un error mínimo que se va agrandando cuota a cuota.
     const datosParaCalculo = {
       ...datosCredito,
+      capitalInicialUVA,
       fechaLiquidacion: new Date(`${datosCredito.fechaLiquidacion}T00:00:00Z`),
     };
     const resultado = generarCuadroAmortizacion(datosParaCalculo, feriadosSet);
