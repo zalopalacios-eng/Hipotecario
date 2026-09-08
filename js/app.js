@@ -157,19 +157,20 @@ function renderCuadro() {
   for (const fila of filasAMostrar) {
     const pago = pagosPorCuota.get(fila.numero);
     const tr = document.createElement("tr");
-    const { valor: uvaRef, confirmado } = valorUvaParaFecha(fila.fechaVencimiento);
+    const { valor: uvaRef, confirmado, fechaUsada } = valorUvaParaFecha(fila.fechaVencimiento);
     const montoEstimado = fila.uvaCuota * uvaRef;
 
-    let estadoHtml, accionHtml;
+    let estadoHtml, accionHtml, valorUvaHtml;
     if (pago) {
       estadoHtml = `<span class="estampa estampa--ok">PAGADA</span>`;
       accionHtml = `<button class="btn-link" data-accion="deshacer" data-numero="${fila.numero}">deshacer</button>`;
-    } else if (fila.numero === proxima?.numero) {
+      valorUvaHtml = `<span class="num">${fmtPesos.format(pago.valorUvaPago)}</span>`;
+    } else {
       estadoHtml = `<span class="estampa ${confirmado ? "estampa--ok" : "estampa--estimado"}">${confirmado ? "CONFIRMADA" : "ESTIMADA"}</span>`;
       accionHtml = `<button class="btn-primario" data-accion="pagar" data-numero="${fila.numero}">Marcar pagada</button>`;
-    } else {
-      estadoHtml = `<span class="estampa">PENDIENTE</span>`;
-      accionHtml = "";
+      valorUvaHtml = confirmado
+        ? `<span class="num">${fmtPesos.format(uvaRef)}</span>`
+        : `<span class="num" title="Todavía no hay valor publicado para el ${fmtFecha(fila.fechaVencimiento)}; se usa el último disponible, del ${fmtFecha(fechaUsada || fila.fechaVencimiento)}">${fmtPesos.format(uvaRef)}*</span>`;
     }
 
     tr.innerHTML = `
@@ -178,6 +179,7 @@ function renderCuadro() {
       <td class="num">${fmtUVA(fila.uvaCuota)}</td>
       <td class="num">${fmtUVA(fila.uvaCapital)}</td>
       <td class="num">${fmtUVA(fila.uvaInteres)}</td>
+      <td class="num">${valorUvaHtml}</td>
       <td class="num">${pago ? fmtPesos.format(pago.montoPesosPagado) : fmtPesos.format(montoEstimado)}</td>
       <td>${estadoHtml}</td>
       <td>${accionHtml}</td>
