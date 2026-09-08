@@ -40,9 +40,6 @@ async function actualizarUVA() {
 
   const fmt = (d) => d.toISOString().slice(0, 10);
   const hoy = new Date();
-  // Traemos TODO el historial desde la fecha de liquidación del crédito hasta
-  // hoy, no solo los últimos días — si no, las cuotas viejas (antes de que
-  // esta Action empezara a correr) se quedan sin dato real para siempre.
   const desde = new Date(`${datosCredito.fechaLiquidacion}T00:00:00Z`);
   const TRAMO_DIAS = 90;
 
