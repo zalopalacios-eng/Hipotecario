@@ -174,15 +174,15 @@ function renderCuadro() {
     }
 
     tr.innerHTML = `
-      <td>${fila.numero}</td>
-      <td>${fmtFecha(fila.fechaVencimiento)}</td>
-      <td class="num">${fmtUVA(fila.uvaCuota)}</td>
-      <td class="num">${fmtUVA(fila.uvaCapital)}</td>
-      <td class="num">${fmtUVA(fila.uvaInteres)}</td>
-      <td class="num">${valorUvaHtml}</td>
-      <td class="num">${pago ? fmtPesos.format(pago.montoPesosPagado) : fmtPesos.format(montoEstimado)}</td>
-      <td>${estadoHtml}</td>
-      <td>${accionHtml}</td>
+      <td data-label="Nº">${fila.numero}</td>
+      <td data-label="Vencimiento">${fmtFecha(fila.fechaVencimiento)}</td>
+      <td class="num" data-label="UVA cuota">${fmtUVA(fila.uvaCuota)}</td>
+      <td class="num" data-label="UVA capital">${fmtUVA(fila.uvaCapital)}</td>
+      <td class="num" data-label="UVA interés">${fmtUVA(fila.uvaInteres)}</td>
+      <td class="num" data-label="Valor UVA">${valorUvaHtml}</td>
+      <td class="num" data-label="Monto $">${pago ? fmtPesos.format(pago.montoPesosPagado) : fmtPesos.format(montoEstimado)}</td>
+      <td data-label="Estado">${estadoHtml}</td>
+      <td data-label="">${accionHtml}</td>
     `;
     tbody.appendChild(tr);
   }
@@ -268,15 +268,15 @@ function renderGastos() {
         <h3>${m}/${y}</h3>
         <strong>${fmtPesos.format(total)}</strong>
       </div>
-      <table class="tabla-gastos">
+      <table class="tabla-gastos tabla-responsiva">
         <tbody>
           ${items.map((g) => `
             <tr>
-              <td>${fmtFecha(g.fecha)}</td>
-              <td class="rubro">${g.rubro}</td>
-              <td class="num">${fmtPesos.format(g.monto)}</td>
-              <td>${g.notas || ""}</td>
-              <td><button class="btn-link" data-borrar="${g.id}">borrar</button></td>
+              <td data-label="Fecha">${fmtFecha(g.fecha)}</td>
+              <td class="rubro" data-label="Rubro">${g.rubro}</td>
+              <td class="num" data-label="Monto">${fmtPesos.format(g.monto)}</td>
+              <td data-label="Notas">${g.notas || ""}</td>
+              <td data-label=""><button class="btn-link" data-borrar="${g.id}">borrar</button></td>
             </tr>
           `).join("")}
         </tbody>
