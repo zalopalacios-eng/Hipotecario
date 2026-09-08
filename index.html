@@ -223,8 +223,37 @@
   @media (max-width: 600px) {
     .hero__proxima { border-left: none; padding-left: 0; border-top: 1px solid #33505a; padding-top: 1rem; width: 100%; }
     .hero__saldo-monto { font-size: 2rem; }
-    table { font-size: 0.76rem; }
-    td, thead th { padding: 0.35rem 0.3rem; }
+
+    table.tabla-responsiva thead { display: none; }
+    table.tabla-responsiva, table.tabla-responsiva tbody, table.tabla-responsiva tr, table.tabla-responsiva td {
+      display: block;
+      width: 100%;
+    }
+    table.tabla-responsiva tr {
+      border: 1px solid var(--papel-linea);
+      border-radius: var(--radio);
+      padding: 0.6rem 0.8rem;
+      margin-bottom: 0.7rem;
+    }
+    table.tabla-responsiva td {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 0.6rem;
+      padding: 0.3rem 0;
+      border-bottom: 1px dashed var(--papel-linea);
+      text-align: right;
+    }
+    table.tabla-responsiva td:last-child { border-bottom: none; }
+    table.tabla-responsiva td::before {
+      content: attr(data-label);
+      font-family: "IBM Plex Mono", monospace;
+      font-size: 0.68rem;
+      letter-spacing: 0.02em;
+      color: var(--texto-tenue);
+      text-align: left;
+      flex-shrink: 0;
+    }
   }
 </style>
 </head>
