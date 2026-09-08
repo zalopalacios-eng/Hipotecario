@@ -329,7 +329,13 @@ async function iniciar() {
       cargarGastos(),
     ]);
 
-    const resultado = generarCuadroAmortizacion(datosCredito, feriadosSet);
+        // datosCredito.fechaLiquidacion viene como texto ("2026-02-27") desde
+    // firebase-config.js; el motor de amortización necesita un objeto Date.
+    const datosParaCalculo = {
+      ...datosCredito,
+      fechaLiquidacion: new Date(`${datosCredito.fechaLiquidacion}T00:00:00Z`),
+    };
+    const resultado = generarCuadroAmortizacion(datosParaCalculo, feriadosSet);
     cuadro = resultado.cuadro;
 
     renderResumen();
