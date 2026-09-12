@@ -1,0 +1,10 @@
+{
+  "name": "credito-uva-actualizador",
+  "private": true,
+  "type": "module",
+  "description": "Script de la GitHub Action que actualiza el valor de UVA y los feriados en Firestore.",
+  "dependencies": {
+    "firebase-admin": "^12.6.0",
+    "undici": "^6.19.8"
+  }
+}
