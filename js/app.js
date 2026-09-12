@@ -29,8 +29,8 @@ const hoyISO = () => new Date().toISOString().slice(0, 10);
 // ---------- Estado en memoria ----------
 let cuadro = [];
 let feriadosSet = new Set();
-let uvaPorFecha = new Map();
-let pagosPorCuota = new Map();
+let uvaPorFecha = new Map(); // "YYYY-MM-DD" -> valor
+let pagosPorCuota = new Map(); // numero -> {fechaPago, valorUvaPago, montoPesosPagado, ...}
 let gastos = [];
 
 // ---------- Carga de datos ----------
@@ -68,6 +68,16 @@ async function cargarGastos() {
   return lista;
 }
 
+async function cargarCotizaciones() {
+  const snap = await getDocs(query(collection(db, "cotizaciones"), orderBy("fecha")));
+  const lista = [];
+  snap.forEach((d) => lista.push(d.data()));
+  return lista;
+}
+
+// Busca el valor de UVA para una fecha exacta; si no está, devuelve el último
+// valor disponible anterior (o el más reciente que haya, si la fecha es futura),
+// marcando si es un valor "confirmado" (esa fecha exacta) o "estimado".
 function valorUvaParaFecha(fechaISO) {
   if (uvaPorFecha.has(fechaISO)) {
     return { valor: uvaPorFecha.get(fechaISO), confirmado: true };
@@ -81,17 +91,20 @@ function valorUvaParaFecha(fechaISO) {
   if (ultimaAnterior) {
     return { valor: uvaPorFecha.get(ultimaAnterior), confirmado: false, fechaUsada: ultimaAnterior };
   }
+  // No hay ningún dato todavía (recién arrancando la app antes de que corra la Action)
   return { valor: datosCredito.valorUvaInicial, confirmado: false, fechaUsada: datosCredito.fechaLiquidacion };
 }
 
 // ---------- Render: resumen / hero ----------
 function calcularSaldoActualUVA() {
+  // El saldo posterior a la última cuota efectivamente pagada (en orden), o el
+  // capital inicial si todavía no se pagó ninguna.
   let saldo = capitalInicialUVA;
   for (const fila of cuadro) {
     if (pagosPorCuota.has(fila.numero)) {
       saldo = fila.uvaSaldoPosterior;
     } else {
-      break;
+      break; // asumimos que se paga en orden
     }
   }
   return saldo;
@@ -248,7 +261,7 @@ const RUBROS = ["expensas", "luz", "gas", "internet", "seguro", "otro"];
 function renderGastos() {
   const porPeriodo = new Map();
   for (const g of gastos) {
-    const periodo = g.fecha.slice(0, 7);
+    const periodo = g.fecha.slice(0, 7); // "YYYY-MM"
     if (!porPeriodo.has(periodo)) porPeriodo.set(periodo, []);
     porPeriodo.get(periodo).push(g);
   }
@@ -311,7 +324,141 @@ document.getElementById("gastos-lista").addEventListener("click", async (e) => {
   renderGastos();
 });
 
-// ---------- Navegación entre secciones ----------
+// ---------- Análisis: UVA vs. Dólar ----------
+let cotizaciones = [];
+let chartAnalisis = null;
+let rangoActivo = "todo";
+const SERIES_INFO = {
+  uva: { label: "UVA", color: "#142430" },
+  usdOficial: { label: "USD Oficial", color: "#3d6b52" },
+  usdBlue: { label: "USD Blue", color: "#b9903f" },
+  usdCripto: { label: "USD Cripto", color: "#9c4a3c" },
+};
+
+// Reduce la cantidad de puntos para que el gráfico no se sature con miles
+// de días; toma como máximo ~400 puntos espaciados uniformemente.
+function downsample(datos, maxPuntos = 400) {
+  if (datos.length <= maxPuntos) return datos;
+  const paso = Math.ceil(datos.length / maxPuntos);
+  return datos.filter((_, i) => i % paso === 0 || i === datos.length - 1);
+}
+
+function filtrarPorRango(datos, rango) {
+  if (rango === "todo") return datos;
+  const anios = Number(rango);
+  const hoy = new Date();
+  const desde = new Date(hoy.getFullYear() - anios, hoy.getMonth(), hoy.getDate());
+  const desdeISO = desde.toISOString().slice(0, 10);
+  return datos.filter((d) => d.fecha >= desdeISO);
+}
+
+function seriesActivas() {
+  return [...document.querySelectorAll("#series-checks input[type=checkbox]")]
+    .filter((c) => c.checked)
+    .map((c) => c.dataset.serie);
+}
+
+function renderGrafico() {
+  const datos = downsample(filtrarPorRango(cotizaciones, rangoActivo));
+  const labels = datos.map((d) => fmtFecha(d.fecha));
+  const activas = seriesActivas();
+
+  const datasets = activas.map((campo) => ({
+    label: SERIES_INFO[campo].label,
+    data: datos.map((d) => d[campo] ?? null),
+    borderColor: SERIES_INFO[campo].color,
+    backgroundColor: SERIES_INFO[campo].color,
+    borderWidth: 1.6,
+    pointRadius: 0,
+    spanGaps: true,
+    tension: 0.15,
+  }));
+
+  const ctx = document.getElementById("grafico-analisis");
+  if (chartAnalisis) chartAnalisis.destroy();
+  chartAnalisis = new Chart(ctx, {
+    type: "line",
+    data: { labels, datasets },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      interaction: { mode: "index", intersect: false },
+      scales: {
+        x: { ticks: { maxTicksLimit: 8, font: { family: "IBM Plex Mono", size: 10 } }, grid: { display: false } },
+        y: { ticks: { font: { family: "IBM Plex Mono", size: 10 }, callback: (v) => fmtPesos.format(v) } },
+      },
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          callbacks: { label: (ctx) => `${ctx.dataset.label}: ${fmtPesos.format(ctx.parsed.y)}` },
+        },
+      },
+    },
+  });
+}
+
+document.getElementById("series-checks").addEventListener("change", renderGrafico);
+
+document.getElementById("rango-botones").addEventListener("click", (e) => {
+  const btn = e.target.closest("button[data-rango]");
+  if (!btn) return;
+  rangoActivo = btn.dataset.rango;
+  document.querySelectorAll("#rango-botones button").forEach((b) => b.classList.remove("activo"));
+  btn.classList.add("activo");
+  renderGrafico();
+});
+
+// Percentil de la relación UVA/USD de hoy contra todo el historial: si hoy
+// la UVA está relativamente "barata" frente a ese dólar (percentil bajo),
+// vender ese dólar para cancelar UVA rinde más que en la mayoría del
+// historial. Si está "cara" (percentil alto), pasó lo contrario.
+function percentilRatioHoy(campoUsd) {
+  const ratios = cotizaciones
+    .filter((d) => d.uva != null && d[campoUsd] != null)
+    .map((d) => ({ fecha: d.fecha, ratio: d.uva / d[campoUsd] }));
+  if (ratios.length < 10) return null;
+
+  const ultimo = ratios[ratios.length - 1];
+  const ordenado = [...ratios].sort((a, b) => a.ratio - b.ratio);
+  const posicion = ordenado.findIndex((r) => r.fecha === ultimo.fecha);
+  const percentil = Math.round((posicion / (ordenado.length - 1)) * 100);
+  return { percentil, ratio: ultimo.ratio, fecha: ultimo.fecha };
+}
+
+function renderAnalisis() {
+  if (cotizaciones.length === 0) return;
+  const ultima = cotizaciones[cotizaciones.length - 1];
+
+  document.getElementById("hoy-grid").innerHTML = `
+    <div><span>Fecha del dato</span><strong>${fmtFecha(ultima.fecha)}</strong></div>
+    <div><span>UVA</span><strong>${ultima.uva != null ? fmtPesos.format(ultima.uva) : "—"}</strong></div>
+    <div><span>USD Oficial</span><strong>${ultima.usdOficial != null ? fmtPesos.format(ultima.usdOficial) : "—"}</strong></div>
+    <div><span>USD Blue</span><strong>${ultima.usdBlue != null ? fmtPesos.format(ultima.usdBlue) : "—"}</strong></div>
+    <div><span>USD Cripto</span><strong>${ultima.usdCripto != null ? fmtPesos.format(ultima.usdCripto) : "—"}</strong></div>
+  `;
+
+  const nombres = { usdOficial: "USD Oficial", usdBlue: "USD Blue", usdCripto: "USD Cripto" };
+  const senalesHtml = ["usdOficial", "usdBlue", "usdCripto"].map((campo) => {
+    const r = percentilRatioHoy(campo);
+    if (!r) return "";
+    let clase = "senal", texto;
+    if (r.percentil <= 30) {
+      clase += " senal--barata";
+      texto = `UVA relativamente barata frente a ${nombres[campo]} (percentil ${r.percentil}% del historial desde 2016). Históricamente, vender ${nombres[campo]} para cancelar UVA rindió mejor en pocos momentos como este.`;
+    } else if (r.percentil >= 70) {
+      clase += " senal--cara";
+      texto = `UVA relativamente cara frente a ${nombres[campo]} ahora (percentil ${r.percentil}% del historial desde 2016). En la mayor parte del historial, esperar rindió mejor que vender ${nombres[campo]} hoy.`;
+    } else {
+      texto = `Relación UVA / ${nombres[campo]} en un rango intermedio (percentil ${r.percentil}% del historial desde 2016).`;
+    }
+    return `<div class="${clase}">${texto}<small>relación UVA/USD de hoy: ${r.ratio.toFixed(3)}</small></div>`;
+  }).join("");
+
+  document.getElementById("senales").innerHTML = senalesHtml;
+  renderGrafico();
+}
+
+
 document.querySelectorAll("[data-tab]").forEach((btn) => {
   btn.addEventListener("click", () => {
     document.querySelectorAll("[data-tab]").forEach((b) => b.classList.remove("activo"));
@@ -324,11 +471,12 @@ document.querySelectorAll("[data-tab]").forEach((btn) => {
 // ---------- Arranque ----------
 async function iniciar() {
   try {
-    [feriadosSet, uvaPorFecha, pagosPorCuota, gastos] = await Promise.all([
+    [feriadosSet, uvaPorFecha, pagosPorCuota, gastos, cotizaciones] = await Promise.all([
       cargarFeriados(),
       cargarUvaDiario(),
       cargarPagos(),
       cargarGastos(),
+      cargarCotizaciones(),
     ]);
 
     // El capital en UVA se calcula siempre a partir de pesos ÷ valor UVA con
@@ -345,6 +493,7 @@ async function iniciar() {
     renderResumen();
     renderCuadro();
     renderGastos();
+    renderAnalisis();
     document.getElementById("estado-carga").style.display = "none";
     document.getElementById("app").style.display = "block";
   } catch (err) {
